@@ -1,0 +1,128 @@
+ 
+            
+pipeline {
+     environment { 
+
+        registry = "adimoss/devopsrepository" 
+
+        registryCredential = 'dockerhub-id' 
+
+        dockerImage = '' 
+
+    }
+    agent any 
+    
+    stages {
+        stage('GIT') {
+          
+         steps {
+                echo 'cloning project from GIT'
+                git branch : "main" , 
+                credentialsId: 'adam01' ,
+                url :'https://github.com/Adam-khalfaoui/Spring-Boot-Devops.git'
+            }
+        }
+        stage('MVN CLEAN') {
+            steps {
+               sh 'mvn clean'
+            }
+        }
+       
+        stage('MVN COMPILE') {
+            steps {
+               sh 'mvn compile'
+            
+           }
+        }
+        
+                         stage('JUNIT/MOCKITO') {
+            steps {
+               sh 'mvn test -Dtest="tn.esprit.rh.achat.ProduitServiceJunitTest.java" '
+               sh 'mvn test -Dtest="tn.esprit.rh.achat.ProduitSericeTestMock.java" '
+               
+                 sh 'mvn test -Dtest="tn.esprit.rh.achat.FactureServiceTestMock.java" '
+                 
+            
+           }
+        }
+          
+          stage('Scan') {
+               steps {
+    sh "    mvn sonar:sonar \
+  -Dsonar.projectKey=sonarqubetest \
+  -Dsonar.host.url=http://192.168.1.16:9000 \
+  -Dsonar.login=31fb490bcbfbdf364fd6aa5cf419fc54ad20df7b"
+  echo "sonar succefully"
+
+                      }
+                        }
+                           stage('NEXUS') {
+            steps {
+                sh "mvn deploy -DskipTests";
+            }
+        }
+               stage('Sending email'){
+           steps {
+            mail bcc: '', body: '''Jenkins Notification,
+            CI Pipeline with success.
+            Cordialement''', cc: '', from: '', replyTo: '', subject: 'CI completed ', to: 'adam.khalfaoui@esprit.tn'
+            }
+       }   
+         stage('Building our image') { 
+
+            steps { 
+
+                script { 
+
+                    dockerImage = docker.build registry + ":latest" 
+
+                }
+
+            } 
+
+        }
+
+        stage('Deploy our image') { 
+
+            steps { 
+
+                script { 
+
+                    docker.withRegistry( '', registryCredential ) { 
+
+                        dockerImage.push() 
+
+                    }
+                } 
+
+            }
+
+        } 
+
+        stage('Cleaning up') { 
+
+            steps { 
+
+                sh "docker rmi $registry:latest" 
+
+            }
+
+        }
+         stage('docker composer') { 
+
+            steps { 
+
+                sh "docker-compose up -d" 
+
+            }
+
+        }
+
+    }
+    post {
+        always {
+            emailext body: 'CI/CD Succesfully completed', recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']], subject: 'Test'
+        }
+    }
+}
+
